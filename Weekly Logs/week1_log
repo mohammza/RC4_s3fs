@@ -1,0 +1,9 @@
+Week 1 (March 2 to March 15)
+1. verified installation of s3fs
+2. examined RC4 function signatures and usage
+3. wrote test program to test out RC4 functions - RC4_set_key and RC4
+4. identified and resolved linking issues when compiling test program using RC4 functions
+
+Goal for Week 2 (March 16 to March 22)
+- write RC4 standalone to encrypt and decrypt a given file
+- look at s3fs source code to identify upload and downloads components

@@ -1,0 +1,4 @@
+#for compilation
+export LD_LIBRARY_PATH=path_to_openssl:$LD_LIBRARY_PATH
+g++ main.cpp RC4.cpp -Lpath_to_openssl -lssl -lcrypto
+
