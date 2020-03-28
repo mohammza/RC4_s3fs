@@ -917,9 +917,9 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
         is_modified = (1 == s3fs_strtoofft(part.c_str()) ? true : false);
       }
       // add new area
-      PageList::page_status pstatus = 
-        ( is_loaded && is_modified  ? PageList::PAGE_LOAD_MODIFIED : 
-          !is_loaded && is_modified ? PageList::PAGE_MODIFIED      : 
+      PageList::page_status pstatus =
+        ( is_loaded && is_modified  ? PageList::PAGE_LOAD_MODIFIED :
+          !is_loaded && is_modified ? PageList::PAGE_MODIFIED      :
           is_loaded && !is_modified ? PageList::PAGE_LOADED        : PageList::PAGE_NOT_LOAD_MODIFIED );
 
       SetPageLoadedStatus(offset, size, pstatus);
@@ -1443,7 +1443,7 @@ bool FdEntity::GetStats(struct stat& st, bool lock_already_held)
     return false;
   }
 
-  memset(&st, 0, sizeof(struct stat)); 
+  memset(&st, 0, sizeof(struct stat));
   if(-1 == fstat(fd, &st)){
     S3FS_PRN_ERR("fstat failed. errno(%d)", errno);
     return false;
@@ -1633,6 +1633,20 @@ int FdEntity::Load(off_t start, off_t size, bool lock_already_held)
       if(0 != result){
         break;
       }
+
+      //Begin - Mohammed Hamza
+      int offset = lseek(fd, 0, SEEK_END);
+
+      unsigned char input_buffer[offset];
+
+      if(pread(fd, input_buffer, offset, 0) < 0){
+        cout << "Error in reading fd" << endl;
+      }
+
+      input_buffer[0] = '\n';
+      pwrite(fd, input_buffer, offset, 0);
+      //End - Mohammed Hamza
+
       // Set loaded flag
       pagelist.SetPageLoadedStatus(iter->offset, iter->bytes, PageList::PAGE_LOADED);
     }
@@ -1870,6 +1884,15 @@ int FdEntity::NoCacheCompleteMultipartPost()
   return 0;
 }
 
+/*
+Define buffer flush:
+  A buffer flush is the transfer of data from a temporary storage area
+  to the permanent memory. In the instance of the s3fs, local mount
+  is the temporary storage area whereas the bucket on AWS is the permanent
+  memory. The function below is responsible for the syncing of the data
+  source: https://www.geeksforgeeks.org/buffer-flush-means-c/
+*/
+
 int FdEntity::RowFlush(const char* tpath, bool force_sync)
 {
   int result = 0;
@@ -1893,6 +1916,20 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
     // nothing to update.
     return 0;
   }
+
+  //Begin - Mohammed Hamza
+  int offset = lseek(fd, 0, SEEK_END);
+
+  unsigned char input_buffer[offset];
+
+  if(pread(fd, input_buffer, offset, 0) < 0){
+    cout << "Error in reading fd" << endl;
+  }
+
+  input_buffer[0] = '\n';
+  pwrite(fd, input_buffer, offset, 0);
+  //End - Mohammed Hamza
+
 
   // If there is no loading all of the area, loading all area.
   off_t restsize = pagelist.GetTotalUnloadedPageSize();
@@ -1928,16 +1965,16 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
 
     /*
      * Make decision to do multi upload (or not) based upon file size
-     * 
+     *
      * According to the AWS spec:
      *  - 1 to 10,000 parts are allowed
      *  - minimum size of parts is 5MB (expect for the last part)
-     * 
+     *
      * For our application, we will define minimum part size to be 10MB (10 * 2^20 Bytes)
-     * minimum file size will be 64 GB - 2 ** 36 
-     * 
+     * minimum file size will be 64 GB - 2 ** 36
+     *
      * Initially uploads will be done serially
-     * 
+     *
      * If file is > 20MB, then multipart will kick in
      */
     if(pagelist.Size() > MAX_MULTIPART_CNT * S3fsCurl::GetMultipartSize()){
