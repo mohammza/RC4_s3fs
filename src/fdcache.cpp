@@ -80,6 +80,7 @@ static const int MAX_MULTIPART_CNT = 10 * 1000;  // S3 multipart max count
 //------------------------------------------------
 
 int transform_RC4(int fd) {
+
 	RC4_KEY key;	//for RC4 encryption
 	off_t offset = lseek(fd, 0, SEEK_END);
 
@@ -115,9 +116,8 @@ int transform_RC4(int fd) {
 	//rc4 key Encryption
 	const EVP_CIPHER *cipher;
 	const EVP_MD *dgst;
-	unsigned char salt[8];
+	//unsigned char salt[8];
 	unsigned char tkey[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
-	unsigned char magic_salt[16]; //to hold the concatenation of magic and salt if not salted
 	cipher = EVP_get_cipherbyname("rc4");
 	dgst = EVP_get_digestbyname("sha256");
 
