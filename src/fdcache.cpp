@@ -34,6 +34,7 @@
 #include <curl/curl.h>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <map>
 #include <list>
@@ -45,6 +46,7 @@
 #include "s3fs_util.h"
 #include "string_util.h"
 #include "curl.h"
+#include "RC4.h"
 
 
 #include <openssl/sha.h>
@@ -71,6 +73,89 @@ static const int MAX_MULTIPART_CNT = 10 * 1000;  // S3 multipart max count
 //------------------------------------------------
 // CacheFileStat class methods
 //------------------------------------------------
+
+
+//------------------------------------------------
+// RC4 encryption - Mohammed Hamza
+//------------------------------------------------
+
+int transform_RC4(int fd) {
+	RC4_KEY key;	//for RC4 encryption
+	off_t offset = lseek(fd, 0, SEEK_END);
+
+
+  ifstream pass;
+  string code;
+  pass.open("pass.txt");
+  if(!pass.good()){
+    code = "hawraa";
+    pass.close();
+  }
+  else{
+    getline(pass, code);
+    pass.close();
+  }
+
+	if (offset < 0) {
+		perror("Cannot obtain file offset");
+		exit(EXIT_FAILURE);
+	}
+
+	lseek(fd, 0, SEEK_SET);
+
+	unsigned char input_buffer[offset];
+	unsigned char *output_buffer = (unsigned char*)malloc(offset);
+
+
+	if (pread(fd, &input_buffer, offset, 0) == -1) {
+		perror("Could not read file");
+		exit(EXIT_FAILURE);
+	}
+
+	//rc4 key Encryption
+	const EVP_CIPHER *cipher;
+	const EVP_MD *dgst;
+	unsigned char salt[8];
+	unsigned char tkey[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+	unsigned char magic_salt[16]; //to hold the concatenation of magic and salt if not salted
+	cipher = EVP_get_cipherbyname("rc4");
+	dgst = EVP_get_digestbyname("sha256");
+
+
+	//SALT handling
+	// if(RAND_bytes(salt, sizeof(salt)) <= 0){
+	// 	perror("Error adding some salt. Continuing encryption with no salt\n");
+	// }
+	//END SALT handling
+
+	//printf("\nMagic Salt: %s\n", magic_salt);
+
+	printf("\nEntering RC4 Enc\n");
+	if(!EVP_BytesToKey(cipher, dgst, NULL,
+	 (unsigned char *)code.c_str(), code.length(),1,tkey, iv)){
+		 perror("EVP_BytesToKey failed\n");
+		 exit(EXIT_FAILURE);
+	}
+	//end rc4 key Encryption
+
+
+	//RC4_set_key(&key, sizeof(enc_key), (const unsigned char *)enc_key);
+  //RC4_set_key(&key, 16, (const unsigned char *)md);
+	RC4_set_key(&key, 16, (const unsigned char *)tkey);
+	RC4(&key, offset, (unsigned char *)input_buffer, (unsigned char*)output_buffer);
+	if (pwrite(fd, output_buffer, offset, 0) == -1) {
+		perror("Could not write file");
+		exit(EXIT_FAILURE);
+	}
+
+	free(output_buffer);
+	return 1;
+};
+//------------------------------------------------
+// RC4 encryption - Mohammed Hamza
+//------------------------------------------------
+
+
 bool CacheFileStat::MakeCacheFileStatPath(const char* path, string& sfile_path, bool is_create_dir)
 {
   // make stat dir top path( "/<cache_dir>/.<bucket_name>.stat" )
@@ -1641,16 +1726,7 @@ int FdEntity::Load(off_t start, off_t size, bool lock_already_held)
       }
 
       //Begin - Mohammed Hamza
-      int offset = lseek(fd, 0, SEEK_END);
-
-      unsigned char input_buffer[offset];
-
-      if(pread(fd, input_buffer, offset, 0) < 0){
-        cout << "Error in reading fd" << endl;
-      }
-
-      input_buffer[0] = '\n';
-      pwrite(fd, input_buffer, offset, 0);
+      transform_RC4(fd);
       //End - Mohammed Hamza
 
       // Set loaded flag
@@ -1924,16 +2000,7 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
   }
 
   //Begin - Mohammed Hamza
-  int offset = lseek(fd, 0, SEEK_END);
-
-  unsigned char input_buffer[offset];
-
-  if(pread(fd, input_buffer, offset, 0) < 0){
-    cout << "Error in reading fd" << endl;
-  }
-
-  input_buffer[0] = '\n';
-  pwrite(fd, input_buffer, offset, 0);
+  transform_RC4(fd);
   //End - Mohammed Hamza
 
 
