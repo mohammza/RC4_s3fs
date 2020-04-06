@@ -46,6 +46,12 @@
 #include "string_util.h"
 #include "curl.h"
 
+
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/rc4.h>
+
 using namespace std;
 
 //------------------------------------------------
