@@ -46,7 +46,7 @@
 #include "s3fs_util.h"
 #include "string_util.h"
 #include "curl.h"
-#include "RC4.h"
+//#include "RC4.h"
 
 
 #include <openssl/sha.h>
@@ -78,78 +78,121 @@ static const int MAX_MULTIPART_CNT = 10 * 1000;  // S3 multipart max count
 //------------------------------------------------
 // RC4 encryption - Mohammed Hamza
 //------------------------------------------------
-
 int transform_RC4(int fd) {
-
 	RC4_KEY key;	//for RC4 encryption
-	off_t offset = lseek(fd, 0, SEEK_END);
+  off_t offset = lseek(fd, 0, SEEK_END);
+  const string MAGIC = "Salted__";
+  char is_salted[16];	//stores MAGIC + the salt
 
 
-  ifstream pass;
-  string code;
-  pass.open("pass.txt");
-  if(!pass.good()){
-    code = "hawraa";
-    pass.close();
+  //rc4 key Encryption
+  const EVP_CIPHER *cipher;
+  const EVP_MD *dgst;
+  unsigned char salt[8];
+  unsigned char tkey[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+  cipher = EVP_get_cipherbyname("rc4");
+  dgst = EVP_get_digestbyname("sha256");
+
+  //key
+  string RC4_HASH_KEY = "hawraa";	//default
+  int RC4_KEY_LEN = RC4_HASH_KEY.length();
+
+	//read key from file
+	ifstream in;
+	in.open("pass.txt");
+	if(in.good()){
+		getline(in, RC4_HASH_KEY);
+		RC4_KEY_LEN = RC4_HASH_KEY.length();
+	}
+
+
+  //obtain file size
+  if (offset < 0) {
+    perror("Cannot obtain file offset");
+    return 0;
   }
-  else{
-    getline(pass, code);
-    pass.close();
+  //reset offset to beginning of the file
+  lseek(fd, 0, SEEK_SET);
+	pread(fd, is_salted, 16, 0);
+  //lseek(fd, 0, SEEK_SET);
+
+
+  if(strstr(is_salted, MAGIC.c_str())){	//decrpytion
+    //file is salted need to extract salt it
+    offset -= 16;
+    unsigned char in_buffer[offset];
+    unsigned char adj_buffer[offset]; //new adjusted output buffer;
+
+    for(int i = 8; i < 16; i++){
+      salt[i-8] = is_salted[i];
+    }
+    if(pread(fd, in_buffer, offset, 16) <= 0){
+      perror("Error reading from the file \n");
+			return 0;
+    }
+    if(ftruncate(fd,0) == -1){
+      perror("Error truncating file\n");
+			return 0;
+    };	//decrease back to original file size
+
+    if(!EVP_BytesToKey(cipher, dgst, salt,
+     (unsigned char *)RC4_HASH_KEY.c_str(), RC4_KEY_LEN,1,tkey, iv)){
+       perror("EVP_BytesToKey failed\n");
+    }
+    //generate	key with salt
+    RC4_set_key(&key, 16, (const unsigned char *)tkey);
+    RC4(&key, offset, (unsigned char *)in_buffer, (unsigned char*)adj_buffer);
+    if (pwrite(fd, adj_buffer, offset, 0) == -1) {
+      perror("Could not write file");
+      return 0;
+    };
+  }
+  else {	//encryption
+    //buffers
+    unsigned char input_buffer[offset];
+    unsigned char *output_buffer = (unsigned char*)malloc(offset);
+    //generate the magic 16 bytes
+		//char magic_salt[16];	//stores MAGIC + the salt
+    if(RAND_bytes(salt,sizeof(salt)) <= 0){
+      perror("Error adding some\n");
+			return 0;
+    }
+    // strcpy((char *)magic_salt, (char *)MAGIC.c_str());
+    // strcat((char *)magic_salt, (char *)salt);	//for some reason this causes some mount problem
+
+    if(pread(fd, input_buffer, offset, 0) < 0){
+      perror("Error reading from the file \n");
+      return 0;
+    }
+    if(ftruncate(fd,0) == -1){
+      perror("Eror truncating file\n");
+			return 0;
+    };
+		//write MAGIC first then salt to file
+    if(pwrite(fd, MAGIC.c_str(), 8, 0) < 0){
+			return 0;
+		};
+		if(pwrite(fd, salt, 8, 8) < 0){
+			return 0;
+		};
+
+    if(!EVP_BytesToKey(cipher, dgst, salt,
+     (unsigned char *)RC4_HASH_KEY.c_str(), RC4_KEY_LEN,1,tkey, iv)){
+       perror("EVP_BytesToKey failed\n");
+       return 0;
+    }
+    //generate	key with salt
+    RC4_set_key(&key, 16, (const unsigned char *)tkey);
+    RC4(&key, offset, (unsigned char *)input_buffer, (unsigned char*)output_buffer);
+
+    if (pwrite(fd, output_buffer, offset, 16) == -1) {
+      perror("Could not write file");
+      return 0;
+    }
+    free(output_buffer);
   }
 
-	if (offset < 0) {
-		perror("Cannot obtain file offset");
-		exit(EXIT_FAILURE);
-	}
-
-	lseek(fd, 0, SEEK_SET);
-
-	unsigned char input_buffer[offset];
-	unsigned char *output_buffer = (unsigned char*)malloc(offset);
-
-
-	if (pread(fd, &input_buffer, offset, 0) == -1) {
-		perror("Could not read file");
-		exit(EXIT_FAILURE);
-	}
-
-	//rc4 key Encryption
-	const EVP_CIPHER *cipher;
-	const EVP_MD *dgst;
-	//unsigned char salt[8];
-	unsigned char tkey[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
-	cipher = EVP_get_cipherbyname("rc4");
-	dgst = EVP_get_digestbyname("sha256");
-
-
-	//SALT handling
-	// if(RAND_bytes(salt, sizeof(salt)) <= 0){
-	// 	perror("Error adding some salt. Continuing encryption with no salt\n");
-	// }
-	//END SALT handling
-
-	//printf("\nMagic Salt: %s\n", magic_salt);
-
-	printf("\nEntering RC4 Enc\n");
-	if(!EVP_BytesToKey(cipher, dgst, NULL,
-	 (unsigned char *)code.c_str(), code.length(),1,tkey, iv)){
-		 perror("EVP_BytesToKey failed\n");
-		 exit(EXIT_FAILURE);
-	}
-	//end rc4 key Encryption
-
-
-	//RC4_set_key(&key, sizeof(enc_key), (const unsigned char *)enc_key);
-  //RC4_set_key(&key, 16, (const unsigned char *)md);
-	RC4_set_key(&key, 16, (const unsigned char *)tkey);
-	RC4(&key, offset, (unsigned char *)input_buffer, (unsigned char*)output_buffer);
-	if (pwrite(fd, output_buffer, offset, 0) == -1) {
-		perror("Could not write file");
-		exit(EXIT_FAILURE);
-	}
-
-	free(output_buffer);
-	return 1;
+  return 1;
 };
 //------------------------------------------------
 // RC4 encryption - Mohammed Hamza
