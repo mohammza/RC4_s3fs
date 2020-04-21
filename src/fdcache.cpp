@@ -94,7 +94,7 @@ int transform_RC4(int fd) {
   dgst = EVP_get_digestbyname("sha256");
 
   //key
-  string RC4_HASH_KEY = "hawraa";	//default
+  string RC4_HASH_KEY = "password";	//default
   int RC4_KEY_LEN = RC4_HASH_KEY.length();
 
 	//read key from file
