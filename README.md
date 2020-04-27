@@ -1,76 +1,31 @@
-# s3fs
+# s3fs-secure
 
-s3fs allows Linux and macOS to mount an S3 bucket via FUSE.
-s3fs preserves the native object format for files, allowing use of other
-tools like [AWS CLI](https://github.com/aws/aws-cli).
-[![Build Status](https://travis-ci.org/s3fs-fuse/s3fs-fuse.svg?branch=master)](https://travis-ci.org/s3fs-fuse/s3fs-fuse)
-[![Twitter Follow](https://img.shields.io/twitter/follow/s3fsfuse.svg?style=social&label=Follow)](https://twitter.com/s3fsfuse)
+s3fs-secure takes the existing s3fs-fuse and implements an additional layer of encryption using RC4 cipher
 
-## Features
+## Pre-requisites
 
-* large subset of POSIX including reading/writing files, directories, symlinks, mode, uid/gid, and extended attributes
-* compatible with Amazon S3, Google Cloud Storage, and other S3-based object stores
-* large files via multi-part upload
-* renames via server-side copy
-* optional server-side encryption
-* data integrity via MD5 hashes
-* in-memory metadata caching
-* local disk data caching
-* user-specified regions, including Amazon GovCloud
-* authenticate via v2 or v4 signatures
+Before installing this s3fs-secure ensure that you run 
 
-## Installation
+```
+sudo apt-get update
+```
+Additionally, it is assumed that the user has an AWS IAM user set up with S3 read/write access granted.
 
-Many systems provide pre-built packages:
+So that all the necessary software are updated for installation of this software.
 
-* Amazon Linux via EPEL:
+## s3fs-secure Installation
 
-  ```
-  sudo amazon-linux-extras install epel
-  sudo yum install s3fs-fuse
-  ```
+To install s3fs-secure simply pull the repo from github
 
-* Debian 9 and Ubuntu 16.04 or newer:
+```
+git pull https://github.com/mohammza/s3fs-secure.git
+cd s3fs-secure
+./configure
+make 
+sudo make install
+```
 
-  ```
-  sudo apt install s3fs
-  ```
-
-* Fedora 27 or newer:
-
-  ```
-  sudo dnf install s3fs-fuse
-  ```
-
-* Gentoo:
-
-  ```
-  sudo emerge net-fs/s3fs
-  ```
-
-* RHEL and CentOS 7 or newer through via EPEL:
-
-  ```
-  sudo yum install epel-release
-  sudo yum install s3fs-fuse
-  ```
-
-* SUSE 12 and openSUSE 42.1 or newer:
-
-  ```
-  sudo zypper install s3fs
-  ```
-
-* macOS via [Homebrew](https://brew.sh/):
-
-  ```
-  brew cask install osxfuse
-  brew install s3fs
-  ```
-
-Otherwise consult the [compilation instructions](COMPILATION.md).
-
-## Examples
+## Usage
 
 s3fs supports the standard
 [AWS credentials file](https://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html)
@@ -101,38 +56,6 @@ If you encounter any errors, enable debug output:
 s3fs mybucket /path/to/mountpoint -o passwd_file=${HOME}/.passwd-s3fs -o dbglevel=info -f -o curldbg
 ```
 
-You can also mount on boot by entering the following line to `/etc/fstab`:
-
-```
-s3fs#mybucket /path/to/mountpoint fuse _netdev,allow_other 0 0
-```
-
-or
-
-```
-mybucket /path/to/mountpoint fuse.s3fs _netdev,allow_other 0 0
-```
-
-If you use s3fs with a non-Amazon S3 implementation, specify the URL and path-style requests:
-
-```
-s3fs mybucket /path/to/mountpoint -o passwd_file=${HOME}/.passwd-s3fs -o url=https://url.to.s3/ -o use_path_request_style
-```
-
-or(fstab)
-
-```
-s3fs#mybucket /path/to/mountpoint fuse _netdev,allow_other,use_path_request_style,url=https://url.to.s3/ 0 0
-```
-
-To use IBM IAM Authentication, use the `-o ibm_iam_auth` option, and specify the Service Instance ID and API Key in your credentials file:
-
-```
-echo SERVICEINSTANCEID:APIKEY > /path/to/passwd
-```
-
-The Service Instance ID is only required when using the `-o create_bucket` option.
-
 Note: You may also want to create the global credential file first
 
 ```
@@ -140,37 +63,45 @@ echo ACCESS_KEY_ID:SECRET_ACCESS_KEY > /etc/passwd-s3fs
 chmod 600 /etc/passwd-s3fs
 ```
 
-Note2: You may also need to make sure `netfs` service is start on boot
+To unmount the bucket, run
+
+```
+sudo umount /path/to/mountpoint
+```
+
+The encryption password is stored in the src file and by default set to password. To change the encryption password simply open up the text file and add a desired password.
+
 
 ## Limitations
 
-Generally S3 cannot offer the same performance or semantics as a local file system.  More specifically:
+As of now this can has been tested with file sizes of up to 10mb, anything exceeding this file size can result in the application not running as intended.
 
-* random writes or appends to files require rewriting the entire file
-* metadata operations such as listing directories have poor performance due to network latency
-* [eventual consistency](https://en.wikipedia.org/wiki/Eventual_consistency) can temporarily yield stale data([Amazon S3 Data Consistency Model](https://docs.aws.amazon.com/AmazonS3/latest/dev/Introduction.html#ConsistencyModel))
-* no atomic renames of files or directories
-* no coordination between multiple clients mounting the same bucket
-* no hard links
-* inotify detects only local modifications, not external ones by other clients or tools
-
-## References
-
-* [goofys](https://github.com/kahing/goofys) - similar to s3fs but has better performance and less POSIX compatibility
-* [s3backer](https://github.com/archiecobbs/s3backer) - mount an S3 bucket as a single file
-* [S3Proxy](https://github.com/gaul/s3proxy) - combine with s3fs to mount Backblaze B2, EMC Atmos, Microsoft Azure, and OpenStack Swift buckets
-* [s3ql](https://github.com/s3ql/s3ql/) - similar to s3fs but uses its own object format
-* [YAS3FS](https://github.com/danilop/yas3fs) - similar to s3fs but uses SNS to allow multiple clients to mount a bucket
-
-## Frequently Asked Questions
+## Frequently Asked Questions about s3fs-fuse
 
 * [FAQ wiki page](https://github.com/s3fs-fuse/s3fs-fuse/wiki/FAQ)
 * [s3fs on Stack Overflow](https://stackoverflow.com/questions/tagged/s3fs)
 * [s3fs on Server Fault](https://serverfault.com/questions/tagged/s3fs)
+
+
+
+## RC4_standalone compilation
+
+To compile, go to the rc4_standalone folder and run the following
+
+```
+export LD_LIBRARY_PATH=path_to_openssl:$LD_LIBRARY_PATH
+g++ main.cpp RC4.cpp -Lpath_to_openssl -lssl -lcrypto -o rc4
+```
+
+## Limitations
+
+This standalone implementation can encrypt files up to 100 mb with efficient speed. This includes .txt and .jpg files.
 
 ## License
 
 Copyright (C) 2010 Randy Rizun <rrizun@gmail.com>
 
 Licensed under the GNU GPL version 2
+
+
 
